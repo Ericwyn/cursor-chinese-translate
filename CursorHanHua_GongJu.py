@@ -1062,6 +1062,15 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
         return n.toString();
     }
 
+    function GengXin_KaPian() {
+        var old = document.getElementById('cursor-yongliang-xianshi');
+        if (!old) return;
+        var par = old.parentElement;
+        if (!par) return;
+        var neo = ChuangJian_YongLiang_YuanSu();
+        if (neo) par.replaceChild(neo, old);
+    }
+
     function ShiShi_ShuaXin() {
         var lp = _JieMa();
         if (!lp) return;
@@ -1075,61 +1084,16 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
                 if (xhr.status === 200) {
                     try {
                         var data = JSON.parse(xhr.responseText);
-                        var mxXq = {};
-                        for (var k in data) {
-                            if (k === 'startOfMonth') continue;
-                            mxXq[k] = {
-                                qingQiu: data[k].numRequests || 0,
-                                shangXian: data[k].maxRequestUsage || 0,
-                                lingPaiShu: data[k].numTokens || 0
-                            };
-                        }
-                        YONG_LIANG.moXingXiangQing = mxXq;
                         if (data['gpt-4']) {
                             YONG_LIANG.gaoJiYong = data['gpt-4'].numRequests || 0;
                             YONG_LIANG.gaoJiXian = data['gpt-4'].maxRequestUsage || 0;
                         }
                         YONG_LIANG._shiShi = true;
-                        var old = document.getElementById('cursor-yongliang-xianshi');
-                        if (old) old.remove();
-                        ChaRu_YongLiang_XianShi();
+                        GengXin_KaPian();
                     } catch(e) {}
                 }
             };
             xhr.send();
-        } catch(e) {}
-
-        try {
-            var parts = lp.split('.');
-            if (parts.length >= 2) {
-                var payload = JSON.parse(atob(parts[1]));
-                var uid = (payload.sub || '').replace('auth0|', '');
-                var cookieVal = uid + '::' + lp;
-                var xhr2 = new XMLHttpRequest();
-                xhr2.open('GET', 'https://www.cursor.com/api/usage-summary', true);
-                xhr2.setRequestHeader('Authorization', 'Bearer ' + cookieVal);
-                xhr2.setRequestHeader('Accept', 'application/json');
-                xhr2.onload = function() {
-                    if (xhr2.status === 200) {
-                        try {
-                            var d = JSON.parse(xhr2.responseText);
-                            var plan = d.individualUsage && d.individualUsage.plan;
-                            if (plan) {
-                                YONG_LIANG.zongYong = plan.used || 0;
-                                YONG_LIANG.zongXian = plan.limit || 2000;
-                                YONG_LIANG.shengYu = plan.remaining || 0;
-                                YONG_LIANG.zongBaiFen = Math.round((plan.totalPercentUsed || 0) * 10) / 10;
-                                YONG_LIANG.apiBaiFen = Math.round((plan.apiPercentUsed || 0) * 10) / 10;
-                                YONG_LIANG._shiShi = true;
-                                var old = document.getElementById('cursor-yongliang-xianshi');
-                                if (old) old.remove();
-                                ChaRu_YongLiang_XianShi();
-                            }
-                        } catch(e) {}
-                    }
-                };
-                xhr2.send();
-            }
         } catch(e) {}
     }
 
@@ -1213,20 +1177,24 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
         var cur = YouXiangJieDian;
         for (var up = 0; up < 8; up++) {
             if (!cur.parentElement || cur.parentElement === document.body) break;
-            var txt = cur.parentElement.textContent || '';
-            if (/Pro|\\u4e13\\u4e1a\\u7248|Plan|\\u8ba1\\u5212/.test(txt) && cur.parentElement.childElementCount >= 2) {
-                ZhangHuKuai = cur.parentElement;
+            var p = cur.parentElement;
+            var txt = p.textContent || '';
+            console.log('[HanHua] depth=' + up, 'tag=' + p.tagName, 'children=' + p.childElementCount, 'txt=' + txt.substring(0, 60));
+            if (/Pro|Plan|\\u4e13\\u4e1a|\\u8ba1\\u5212|\\u7ba1\\u7406|Manage/.test(txt) && p.childElementCount >= 2) {
+                ZhangHuKuai = p;
+                console.log('[HanHua] Account block matched at depth=' + up);
                 break;
             }
-            cur = cur.parentElement;
+            cur = p;
         }
 
         if (ZhangHuKuai) {
             ZhangHuKuai.appendChild(YuanSu);
-            console.log('[HanHua] Usage card appended inside account block');
+            console.log('[HanHua] Usage card appended inside account block, children now=' + ZhangHuKuai.childElementCount);
             return;
         }
 
+        console.log('[HanHua] Account block not found, using fallback');
         var parent = YouXiangJieDian;
         for (var i = 0; i < 3; i++) {
             if (parent.parentElement && parent.parentElement !== document.body) {
@@ -1234,7 +1202,7 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
             }
         }
         parent.appendChild(YuanSu);
-        console.log('[HanHua] Usage card appended (fallback)');
+        console.log('[HanHua] Usage card appended (fallback) to', parent.tagName, parent.className);
     }
 
     // ================================================================
