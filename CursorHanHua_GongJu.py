@@ -177,10 +177,24 @@ def ZhengHe_YongLiang_ShuJu(LingPai):
                 "lingPaiShu": MoXing_XinXi.get('numTokens', 0)       # Token 数
             }
         ShuJu["moXingXiangQing"] = MoXing_ShuJu  # 存入模型详情
+        # 总用量 zongYong 保持来自 usage-summary 的 plan.used，不在此覆盖
 
         if 'gpt-4' in GaoJi:  # 有 gpt-4 类别数据
             ShuJu["gaoJiYong"] = GaoJi['gpt-4'].get('numRequests', 0)
             ShuJu["gaoJiXian"] = GaoJi['gpt-4'].get('maxRequestUsage', 500)
+
+        # 从 startOfMonth 补充计费周期（兜底，当 usage-summary 未取到时）
+        if not ShuJu["jiFeiJieShu"] and 'startOfMonth' in GaoJi:
+            try:
+                KaiShiRi = datetime.datetime.fromisoformat(GaoJi['startOfMonth'].replace('Z', '+00:00'))
+                ShuJu["jiFeiKaiShi"] = KaiShiRi.strftime('%Y-%m-%d')
+                Nian = KaiShiRi.year + (KaiShiRi.month // 12)
+                Yue = (KaiShiRi.month % 12) + 1
+                JieShuRi = KaiShiRi.replace(year=Nian, month=Yue)
+                ShuJu["jiFeiJieShu"] = JieShuRi.strftime('%Y-%m-%d')
+            except Exception:
+                pass
+
         if not ShuJu["youXiao"]:
             ShuJu["youXiao"] = True
 
@@ -1071,9 +1085,18 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
         if (neo) par.replaceChild(neo, old);
     }
 
-    function ShiShi_ShuaXin() {
+    var _ZhengZaiShuaXin = false;
+
+    function ShiShi_ShuaXin(ShiDianJi) {
         var lp = _JieMa();
         if (!lp) return;
+        if (_ZhengZaiShuaXin) return;
+        _ZhengZaiShuaXin = true;
+
+        if (ShiDianJi) {
+            var card = document.getElementById('cursor-yongliang-xianshi');
+            if (card) card.style.opacity = '0.5';
+        }
 
         try {
             var xhr = new XMLHttpRequest();
@@ -1088,13 +1111,24 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
                             YONG_LIANG.gaoJiYong = data['gpt-4'].numRequests || 0;
                             YONG_LIANG.gaoJiXian = data['gpt-4'].maxRequestUsage || 0;
                         }
-                        YONG_LIANG._shiShi = true;
-                        GengXin_KaPian();
-                    } catch(e) {}
+                        if (data.startOfMonth) {
+                            var sm = new Date(data.startOfMonth);
+                            if (!isNaN(sm.getTime())) {
+                                YONG_LIANG.jiFeiKaiShi = sm.toISOString().substring(0, 10);
+                                var em = new Date(sm);
+                                em.setMonth(em.getMonth() + 1);
+                                YONG_LIANG.jiFeiJieShu = em.toISOString().substring(0, 10);
+                            }
+                        }
+                    } catch(e) { console.log('[HanHua] parse error', e); }
                 }
+                _ZhengZaiShuaXin = false;
+                YONG_LIANG._shiShi = true;
+                GengXin_KaPian();
             };
+            xhr.onerror = function() { _ZhengZaiShuaXin = false; GengXin_KaPian(); };
             xhr.send();
-        } catch(e) {}
+        } catch(e) { _ZhengZaiShuaXin = false; }
     }
 
     function _ce(tag, css, txt) {
@@ -1119,8 +1153,10 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
         var zC = zP < 60 ? '#4ade80' : (zP < 85 ? '#fbbf24' : '#ef4444');
         var gC = gP < 60 ? '#38bdf8' : (gP < 85 ? '#fbbf24' : '#ef4444');
 
-        var W = _ce('div', 'margin:6px 0 2px 0;');
+        var W = _ce('div', 'margin:6px 0 2px 0;cursor:pointer;user-select:none;transition:opacity 0.3s;');
         W.id = 'cursor-yongliang-xianshi';
+        W.title = '\\u70b9\\u51fb\\u5237\\u65b0\\u7528\\u91cf\\u6570\\u636e';
+        W.addEventListener('click', function(e) { e.stopPropagation(); ShiShi_ShuaXin(true); });
 
         var r1 = _ce('div', 'margin-bottom:4px;');
         var t1 = _ce('div', 'font-size:11px;color:rgba(228,228,228,0.55);margin-bottom:2px;');
@@ -1145,13 +1181,54 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
         if (YONG_LIANG.jiFeiJieShu) {
             var r3 = _ce('div', 'margin-bottom:2px;');
             var t3 = _ce('div', 'font-size:11px;color:rgba(228,228,228,0.55);');
-            t3.appendChild(document.createTextNode('\\u91cd\\u7f6e\\u65e5\\u671f Resets '));
+            t3.appendChild(document.createTextNode('\\u91cd\\u7f6e\\u65e5\\u671f :'));
             t3.appendChild(_ce('span', 'color:#a78bfa;font-weight:600;', YONG_LIANG.jiFeiJieShu));
             r3.appendChild(t3);
             W.appendChild(r3);
+
+            var jinTian = new Date();
+            var jinTianStr = jinTian.getFullYear() + '-' + ('0' + (jinTian.getMonth() + 1)).slice(-2) + '-' + ('0' + jinTian.getDate()).slice(-2);
+            var chongZhiRi = new Date(YONG_LIANG.jiFeiJieShu + 'T00:00:00');
+            var jinTianLing = new Date(jinTianStr + 'T00:00:00');
+            var chaTian = Math.ceil((chongZhiRi.getTime() - jinTianLing.getTime()) / 86400000);
+
+            var r4 = _ce('div', 'margin-bottom:2px;');
+            var t4 = _ce('div', 'font-size:11px;color:rgba(228,228,228,0.55);');
+            t4.appendChild(document.createTextNode('\\u4eca\\u5929\\u65e5\\u671f :'));
+            t4.appendChild(_ce('span', 'color:#94a3b8;font-weight:600;', jinTianStr));
+            r4.appendChild(t4);
+            W.appendChild(r4);
+
+            var r5 = _ce('div', 'margin-bottom:2px;');
+            var t5 = _ce('div', 'font-size:11px;color:rgba(228,228,228,0.55);');
+            var daoJiShi = chaTian > 0 ? chaTian + ' \\u5929\\u540e\\u91cd\\u7f6e' : (chaTian === 0 ? '\\u4eca\\u5929\\u91cd\\u7f6e' : '\\u5df2\\u8fc7\\u91cd\\u7f6e\\u65e5');
+            var daoJiSe = chaTian <= 3 ? '#fbbf24' : '#4ade80';
+            t5.appendChild(document.createTextNode('\\u5012\\u8ba1\\u65f6   :'));
+            t5.appendChild(_ce('span', 'color:' + daoJiSe + ';font-weight:600;', daoJiShi));
+            r5.appendChild(t5);
+            W.appendChild(r5);
         }
 
         return W;
+    }
+
+    function YinCang_TouXiang(container) {
+        var allEl = container.querySelectorAll('div, span');
+        for (var i = 0; i < allEl.length; i++) {
+            var el = allEl[i];
+            var cs = window.getComputedStyle(el);
+            var w = parseInt(cs.width, 10);
+            var h = parseInt(cs.height, 10);
+            var br = cs.borderRadius;
+            if (w >= 20 && w <= 48 && h >= 20 && h <= 48 && w === h && (br === '50%' || br === '9999px' || parseInt(br, 10) >= w / 2)) {
+                var txt = (el.textContent || '').trim();
+                if (txt.length <= 2) {
+                    el.style.display = 'none';
+                    console.log('[HanHua] Avatar hidden:', txt, el.tagName, el.className);
+                    return;
+                }
+            }
+        }
     }
 
     function ChaRu_YongLiang_XianShi() {
@@ -1198,6 +1275,7 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
         }
 
         if (ZhangHuKuai) {
+            YinCang_TouXiang(ZhangHuKuai);
             ZhangHuKuai.appendChild(YuanSu);
             console.log('[HanHua] Usage card appended inside account block, children now=' + ZhangHuKuai.childElementCount);
             return;
@@ -1229,7 +1307,7 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
             if (document.body) {
                 FanYi_ZiShu(document.body);
                 ChaRu_YongLiang_XianShi();
-                if (_XHJ_LP) { setTimeout(ShiShi_ShuaXin, 1500); }
+                if (_XHJ_LP) { setTimeout(function() { ShiShi_ShuaXin(false); }, 1500); }
             }
         }, 500);
 
@@ -1246,7 +1324,7 @@ def ShengCheng_JS_DaiMa(YongLiang_ShuJu, YuanShi_LingPai=""):
         if (_XHJ_LP) {
             setInterval(function() {
                 if (document.getElementById('cursor-yongliang-xianshi')) {
-                    ShiShi_ShuaXin();
+                    ShiShi_ShuaXin(false);
                 }
             }, 60000);
         }

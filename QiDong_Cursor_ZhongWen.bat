@@ -1,9 +1,9 @@
-
+cmdow @ /hid
 
 @echo off
 chcp 65001 >nul 2>&1
 title Cursor 中文版启动器
-cmdow @ /hid
+
 echo ============================================================
 echo   Cursor 中文版启动器
 echo   功能：自动注入汉化脚本后启动 Cursor
@@ -61,4 +61,4 @@ echo [启动] 正在启动 Cursor...
 start "" "%CURSOR_EXE%" --user-data-dir="%CURSOR_USER_DIR%"
 
 echo [完成] Cursor 已启动
-exit
+
