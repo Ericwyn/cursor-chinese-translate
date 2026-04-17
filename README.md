@@ -1,9 +1,8 @@
-# Cursor Settings 页面汉化工具
+# Cursor Settings 页面汉化 + 用量监控工具
 
 ## 工具简介
 
-本工具用于将 Cursor IDE 的 Settings 页面（设置页面）从英文翻译为中文。
-无论 Cursor 版本如何更新，只需重新运行脚本即可恢复汉化。
+本工具用于将 Cursor IDE 的 Settings 页面（设置页面）从英文翻译为中文，同时在设置页面的用户信息区域下方实时显示 API 用量数据（总用量、高级模型用量、重置日期、倒计时等）。无论 Cursor 版本如何更新，只需重新运行脚本即可恢复汉化与用量显示。
 
 ## 文件清单
 
@@ -22,7 +21,7 @@
 ### 方法二：手动注入
 
 ```bash
-# 注入汉化
+# 注入汉化 + 用量显示
 python CursorHanHua_GongJu.py
 
 # 恢复原始英文
@@ -38,9 +37,10 @@ python CursorHanHua_GongJu.py --huifu
 ```python
 # ★★★ 用户配置区域 ★★★
 CURSOR_AN_ZHUANG_LU_JING = r"D:\Tools\cursor"
+CURSOR_SHU_JU_LU_JING    = r"D:\Tools\cursor\user"
 ```
 
-将 `D:\Tools\cursor` 替换为您的 Cursor 实际安装路径即可。
+将两个路径分别替换为您的 Cursor 实际安装路径和用户数据目录（存放认证令牌的目录）。
 
 同样，打开 `QiDong_Cursor_ZhongWen.bat`，修改顶部的配置变量：
 
@@ -56,11 +56,13 @@ set "HANHUA_SCRIPT=e:\OPENCLAW\CursorHanHua_GongJu.py"
 
 ```
 Python 脚本
-  ├── 1. 备份 workbench.html → workbench.html.bak
-  ├── 2. 备份 product.json → product.json.bak
-  ├── 3. 生成 cursor_hanhua.js（翻译脚本）写入 Cursor 目录
-  ├── 4. 在 workbench.html 中注入 <script> 标签引用翻译脚本
-  └── 5. 重新计算 workbench.html 的 SHA256 哈希值并更新 product.json 中的 checksums
+  ├── 1. 从 state.vscdb 数据库读取认证令牌
+  ├── 2. 调用 Cursor API 获取用量数据（总次数、高级模型次数、计费周期等）
+  ├── 3. 备份 workbench.html → workbench.html.bak
+  ├── 4. 备份 product.json  → product.json.bak
+  ├── 5. 生成 cursor_hanhua.js（翻译 + 用量数据）写入 Cursor 目录
+  ├── 6. 在 workbench.html 中注入 <script> 标签引用翻译脚本
+  └── 7. 重新计算 workbench.html 的 SHA256 哈希值并更新 product.json 中的 checksums
 ```
 
 ### 技术细节
@@ -69,19 +71,29 @@ Python 脚本
 
 2. **翻译机制**：`cursor_hanhua.js` 使用 JavaScript 的 `MutationObserver` API 监听 DOM 变化。当 Cursor Settings 页面渲染出英文文本时，脚本会实时将其替换为对应的中文翻译。
 
-3. **翻译字典**：使用 `Map` 数据结构存储英文→中文的映射关系（500+ 条），查找效率为 O(1)。
+3. **翻译字典**：使用 `Map` 数据结构存储英文→中文的映射关系（500+ 条），查找效率为 O(1)；同时支持正则模式匹配，用于翻译带动态数字的文本（如"3 requests remaining"）。
 
-4. **性能保障**：
+4. **用量显示**：脚本在 Cursor 设置页面的用户邮箱下方自动插入用量信息卡片，包含：
+   - 总用量进度条（已用 / 总限额，颜色随使用率变化）
+   - 高级模型（gpt-4 类）用量进度条
+   - 计费周期重置日期
+   - 今天的日期
+   - 距重置日期的倒计时（≤3 天时变黄色预警）
+   - 点击卡片可立即刷新用量数据，每 60 秒自动刷新一次
+
+5. **认证方式**：脚本自动从 `state.vscdb`（Cursor 本地 SQLite 数据库）读取 `cursorAuth/accessToken`，无需手动配置 API Key。令牌以 Base64 编码嵌入 JS 文件，在浏览器端解码后用于 API 请求。
+
+6. **性能保障**：
    - 所有翻译操作通过 `requestAnimationFrame` 批量合并到下一帧执行，不阻塞 UI 线程
    - 只处理新增/变化的 DOM 节点（增量翻译），不做全量扫描
    - 自动跳过编辑器区域（`.monaco-editor` 等），不影响代码编辑
    - 跳过 `<textarea>`、`<input>`、`<code>`、`<pre>` 等不应翻译的元素
 
-5. **版本兼容**：Cursor 更新时会覆盖 `workbench.html`，汉化注入会被清除。使用 `QiDong_Cursor_ZhongWen.bat` 启动时会自动检测并重新注入，因此无论版本如何更新都能保持汉化。
+7. **版本兼容**：Cursor 更新时会覆盖 `workbench.html`，汉化注入会被清除。使用 `QiDong_Cursor_ZhongWen.bat` 启动时会自动检测并重新注入，因此无论版本如何更新都能保持汉化。
 
-6. **幂等性**：脚本可重复运行，不会重复注入。如果检测到已注入，只会更新翻译 JS 文件内容（以便字典更新生效）。
+8. **幂等性**：脚本可重复运行，不会重复注入。如果检测到已注入，只会更新翻译 JS 文件内容（以便字典更新和用量数据刷新生效）。
 
-7. **校验值同步**：Cursor 通过 `product.json` 中的 `checksums` 字段校验核心文件的 SHA256 哈希值。修改 `workbench.html` 后如不更新校验值，Cursor 启动时会提示 "Your Cursor installation appears to be corrupt. Please reinstall."。脚本会自动重新计算并更新校验值，避免此提示。
+9. **校验值同步**：Cursor 通过 `product.json` 中的 `checksums` 字段校验核心文件的 SHA256 哈希值。修改 `workbench.html` 后如不更新校验值，Cursor 启动时会提示 "Your Cursor installation appears to be corrupt. Please reinstall."。脚本会自动重新计算并更新校验值，避免此提示。
 
 ### 安全性
 
@@ -89,14 +101,20 @@ Python 脚本
 - 可随时通过 `--huifu` 参数恢复全部原始文件（包括校验值）
 - 翻译脚本仅修改文本节点的 `textContent`，不注入任何可执行代码
 - 不修改 Cursor 的核心逻辑文件（`workbench.desktop.main.js` 等）
+- 认证令牌以 Base64 编码存储于本地 JS 文件，不上传到任何第三方服务器
 
 ## 添加/修改翻译条目
 
-翻译词典位于 `CursorHanHua_GongJu.py` 文件中的 `HAN_HUA_JS_NEI_RONG` 变量内。
-格式为 JavaScript Map 条目：
+翻译词典位于 `CursorHanHua_GongJu.py` 文件中 `ShengCheng_JS_DaiMa()` 函数内的 `FanYi_CiDian` Map。格式为 JavaScript Map 条目：
 
 ```javascript
 ["English Text", "中文翻译"],
+```
+
+正则模式匹配条目位于 `MoShi_FanYi` 数组中，格式为：
+
+```javascript
+[/正则表达式/i, "替换字符串（$1 表示捕获组）"],
 ```
 
 **注意事项**：
@@ -110,10 +128,12 @@ Python 脚本
 |------|---------|
 | 提示 "installation appears to be corrupt" | 重新运行 `python CursorHanHua_GongJu.py` 更新校验值 |
 | 汉化完全无效 | 检查 JS 文件是否有语法错误：`node -c cursor_hanhua.js` |
-| 部分文本未翻译 | 在字典中添加对应的英文→中文映射 |
+| 部分文本未翻译 | 在 `FanYi_CiDian` 字典中添加对应的英文→中文映射 |
+| 用量卡片不显示 | 检查 `CURSOR_SHU_JU_LU_JING` 路径是否正确，确认已登录 Cursor |
+| 用量数据获取失败 | 检查网络连接，或令牌已过期（重新登录 Cursor 后重新运行脚本） |
 | Cursor 启动异常 | 运行 `python CursorHanHua_GongJu.py --huifu` 恢复原始文件 |
 | 更新后汉化消失 | 重新运行 `python CursorHanHua_GongJu.py` 或使用 bat 启动 |
 
-原因：Cursor（基于 VS Code/Electron）在 product.json 的 checksums 字段中记录了核心文件的 SHA256 哈希值。我们修改了 workbench.html 注入翻译脚本后，文件哈希变了，但 product.json 中记录的仍是原始哈希值，所以 Cursor 启动时检测到不一致就报 "installation appears to be corrupt"。
+**关于 "installation appears to be corrupt" 的原因**：Cursor（基于 VS Code/Electron）在 product.json 的 checksums 字段中记录了核心文件的 SHA256 哈希值。我们修改了 workbench.html 注入翻译脚本后，文件哈希变了，但 product.json 中记录的仍是原始哈希值，所以 Cursor 启动时检测到不一致就报此错误。
 
-修复：在 CursorHanHua_GongJu.py 中新增了 GengXin_JiaoYan_Zhi() 函数，在注入 HTML 后自动重新计算 workbench.html 的 SHA256 哈希值，并更新到 product.json 中。恢复时（--huifu）也会同步恢复 product.json 的原始值。
+修复方式：`CursorHanHua_GongJu.py` 中的 `GengXin_JiaoYan_Zhi()` 函数在注入 HTML 后自动重新计算 workbench.html 的 SHA256 哈希值，并更新到 product.json 中。恢复时（`--huifu`）也会同步恢复 product.json 的原始值。
